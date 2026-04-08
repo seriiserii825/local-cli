@@ -1,132 +1,50 @@
-| :warning: &nbsp;&nbsp;Local CLI is no longer actively maintained. | 
-|-------------------------------------------------------------------|
+# local-cli
 
-This software is still free to use under the license provided below, but users should be aware
-that it is not currently maintained. No additional releases, including security releases, will
-be made available. Caveat emptor.
+Bash CLI for [Local](https://localwp.com) — manage WordPress sites from the terminal using fzf.
 
+## Requirements
 
-Local CLI
-=========
+- [Local](https://localwp.com) running
+- `curl`, `jq`, `fzf`
 
-CLI for [Local](https://localwp.com), the #1 local WordPress development tool.
+## Install
 
-⚠️ **Note:** This CLI is experimental and commands/arguments are subject to change. 
-
-[![Version](https://img.shields.io/npm/v/@getflywheel/local-cli.svg)](https://npmjs.org/package/@getflywheel/local-cli)
-[![License](https://img.shields.io/npm/l/@getflywheel/local-cli.svg)](https://github.com/getflywheel/local-cli/blob/master/package.json)
-
-<!-- toc -->
-* [Requirements](#requirements)
-* [Usage](#usage)
-* [Commands](#commands)
-<!-- tocstop -->
-# Requirements
-* [Local](https://localwp.com) 5.9.2 or newer, which introduced the Local GraphQL API
-* Node.js
-* NPM/Yarn
-
-# Usage
-<!-- usage -->
-```sh-session
-$ npm install -g @getflywheel/local-cli
-$ local-cli COMMAND
-running command...
-$ local-cli (-v|--version|version)
-@getflywheel/local-cli/0.0.5 linux-x64 node-v20.19.1
-$ local-cli --help [COMMAND]
-USAGE
-  $ local-cli COMMAND
-...
-```
-<!-- usagestop -->
-# Commands
-<!-- commands -->
-* [`local-cli autocomplete [SHELL]`](#local-cli-autocomplete-shell)
-* [`local-cli help [COMMAND]`](#local-cli-help-command)
-* [`local-cli list-sites`](#local-cli-list-sites)
-* [`local-cli start-site SITEID`](#local-cli-start-site-siteid)
-* [`local-cli stop-site SITEID`](#local-cli-stop-site-siteid)
-
-## `local-cli autocomplete [SHELL]`
-
-display autocomplete installation instructions
-
-```
-USAGE
-  $ local-cli autocomplete [SHELL]
-
-ARGUMENTS
-  SHELL  shell type
-
-OPTIONS
-  -r, --refresh-cache  Refresh cache (ignores displaying instructions)
-
-EXAMPLES
-  $ local-cli autocomplete
-  $ local-cli autocomplete bash
-  $ local-cli autocomplete zsh
-  $ local-cli autocomplete --refresh-cache
+```bash
+git clone https://github.com/getflywheel/local-cli
+cd local-cli
+./local-cli install        # symlinks to ~/.local/bin/local-cli
 ```
 
-_See code: [@oclif/plugin-autocomplete](https://github.com/oclif/plugin-autocomplete/blob/v0.3.0/src/commands/autocomplete/index.ts)_
+Make sure `~/.local/bin` is in your `$PATH`. Or pass a custom dir:
 
-## `local-cli help [COMMAND]`
-
-display help for local-cli
-
-```
-USAGE
-  $ local-cli help [COMMAND]
-
-ARGUMENTS
-  COMMAND  command to show help for
-
-OPTIONS
-  --all  see all commands in CLI
+```bash
+./local-cli install ~/bin
 ```
 
-_See code: [@oclif/plugin-help](https://github.com/oclif/plugin-help/blob/v3.2.0/src/commands/help.ts)_
+## Usage
 
-## `local-cli list-sites`
-
-list all Local sites
-
-```
-USAGE
-  $ local-cli list-sites
-
-EXAMPLE
-  $ local-cli list
-```
-
-_See code: [src/commands/list-sites.ts](https://github.com/getflywheel/local-cli/blob/v0.0.5/src/commands/list-sites.ts)_
-
-## `local-cli start-site SITEID`
-
-start a Local site and all of its services
-
-```
-USAGE
-  $ local-cli start-site SITEID
-
-EXAMPLE
-  $ local-cli start-site 6mC6PsMCh
+```bash
+local-cli              # interactive: pick site → pick action
+local-cli list         # list all sites
+local-cli running      # list running sites only
+local-cli start        # pick site via fzf and start it
+local-cli stop         # pick site via fzf and stop it
+local-cli stop-all     # stop all running sites
+local-cli theme        # detect site from current theme dir and toggle start/stop
+local-cli theme <path> # same but with explicit path
+local-cli help         # show help
 ```
 
-_See code: [src/commands/start-site.ts](https://github.com/getflywheel/local-cli/blob/v0.0.5/src/commands/start-site.ts)_
+## Theme detection
 
-## `local-cli stop-site SITEID`
+If you're inside a WordPress theme directory, `local-cli theme` will find the corresponding Local site and offer to start or stop it:
 
-stop a Local site and all of its services
-
-```
-USAGE
-  $ local-cli stop-site SITEID
-
-OPTIONS
-  -h, --help  show CLI help
+```bash
+cd ~/Local\ Sites/my-site/app/public/wp-content/themes/my-theme
+local-cli theme
+# Site:   my-site
+# Status: halted
+# Start site? [y/N]
 ```
 
-_See code: [src/commands/stop-site.ts](https://github.com/getflywheel/local-cli/blob/v0.0.5/src/commands/stop-site.ts)_
-<!-- commandsstop -->
+Requires `functions.php` and `style.css` to be present in the directory.

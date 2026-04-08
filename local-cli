@@ -44,12 +44,27 @@ stop_all() {
 
 # Pick site via fzf
 pick_site() {
-  list_sites | column -t -s $'\t' | \
-    fzf --prompt="site> " --height=40% --reverse | \
-    awk '{print $1}'
+  local result
+  result=$({ echo "exit"; list_sites | column -t -s $'\t'; } | \
+    fzf --prompt="site> " --height=40% --reverse)
+  [[ -z "$result" || "$result" == "exit" ]] && exit 0
+  echo "$result" | awk '{print $1}'
 }
 
 case "${1:-}" in
+  help|-h|--help)
+    echo "Usage: local-cli <command>"
+    echo ""
+    echo "Commands:"
+    echo "  (none)     interactive mode: pick site and action via fzf"
+    echo "  list       list all sites"
+    echo "  running    list running sites"
+    echo "  start      pick site via fzf and start it"
+    echo "  stop       pick site via fzf and stop it"
+    echo "  stop-all   stop all running sites"
+    echo "  install    symlink local-cli to ~/.local/bin (or custom dir)"
+    echo "  help       show this help"
+    ;;
   install)
     INSTALL_DIR="${2:-$HOME/.local/bin}"
     mkdir -p "$INSTALL_DIR"
@@ -73,15 +88,19 @@ case "${1:-}" in
   list)
     list_sites | column -t -s $'\t'
     ;;
+  running)
+    list_sites | awk -F'\t' '$3=="running"' | column -t -s $'\t'
+    ;;
   *)
     # Интерактивный режим — выбрать сайт, потом действие
     id=$(pick_site)
     [[ -z "$id" ]] && exit 0
 
-    action=$(printf 'start\nstop' | fzf --prompt="action> " --height=10% --reverse)
+    action=$(printf 'start\nstop\nexit' | fzf --prompt="action> " --height=15% --reverse)
     case "$action" in
       start) start_site "$id" ;;
       stop)  stop_site  "$id" ;;
+      exit)  exit 0 ;;
     esac
     ;;
 esac

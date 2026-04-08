@@ -42,6 +42,68 @@ stop_all() {
   done
 }
 
+SITES_JSON="${XDG_CONFIG_HOME:-$HOME/.config}/Local/sites.json"
+
+# Find Local site by theme path
+find_site_by_path() {
+  local theme_path
+  theme_path=$(realpath "${1:-$PWD}")
+
+  if [[ ! -f "$SITES_JSON" ]]; then
+    echo "Error: sites.json not found" >&2
+    exit 1
+  fi
+
+  jq -r 'to_entries[] | "\(.key)\t\(.value.name)\t\(.value.path)"' "$SITES_JSON" | \
+    while IFS=$'\t' read -r id name path; do
+      if [[ "$theme_path" == "$path"* ]]; then
+        echo "$id"$'\t'"$name"
+        return
+      fi
+    done
+}
+
+theme_toggle() {
+  local dir="${1:-$PWD}"
+
+  if [[ ! -f "$dir/functions.php" || ! -f "$dir/style.css" ]]; then
+    echo "Error: not a WordPress theme directory (missing functions.php or style.css)" >&2
+    exit 1
+  fi
+
+  local match
+  match=$(find_site_by_path "$dir")
+
+  if [[ -z "$match" ]]; then
+    echo "Error: could not find a Local site containing this theme path" >&2
+    exit 1
+  fi
+
+  local id name status
+  id=$(echo "$match" | cut -f1)
+  name=$(echo "$match" | cut -f2)
+  status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+
+  echo "Site:   $name"
+  echo "Status: $status"
+  echo ""
+
+  case "$status" in
+    running)
+      read -r -p "Stop site? [y/N] " confirm
+      [[ "$confirm" =~ ^[Yy]$ ]] && stop_site "$id"
+      ;;
+    halted)
+      read -r -p "Start site? [y/N] " confirm
+      [[ "$confirm" =~ ^[Yy]$ ]] && start_site "$id"
+      ;;
+    *)
+      echo "Unknown status: $status" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # Pick site via fzf
 pick_site() {
   local result
@@ -56,14 +118,15 @@ case "${1:-}" in
     echo "Usage: local-cli <command>"
     echo ""
     echo "Commands:"
-    echo "  (none)     interactive mode: pick site and action via fzf"
-    echo "  list       list all sites"
-    echo "  running    list running sites"
-    echo "  start      pick site via fzf and start it"
-    echo "  stop       pick site via fzf and stop it"
-    echo "  stop-all   stop all running sites"
-    echo "  install    symlink local-cli to ~/.local/bin (or custom dir)"
-    echo "  help       show this help"
+    echo "  (none)        interactive mode: pick site and action via fzf"
+    echo "  list          list all sites"
+    echo "  running       list running sites"
+    echo "  start         pick site via fzf and start it"
+    echo "  stop          pick site via fzf and stop it"
+    echo "  stop-all      stop all running sites"
+    echo "  theme [path]  detect site from theme dir and toggle start/stop"
+    echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
+    echo "  help          show this help"
     ;;
   install)
     INSTALL_DIR="${2:-$HOME/.local/bin}"
@@ -84,6 +147,9 @@ case "${1:-}" in
     ;;
   stop-all)
     stop_all
+    ;;
+  theme)
+    theme_toggle "${2:-}"
     ;;
   list)
     list_sites | column -t -s $'\t'

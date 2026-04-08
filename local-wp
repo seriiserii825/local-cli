@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONN_INFO="${XDG_CONFIG_HOME:-$HOME/.config}/Local/graphql-connection-info.json"
+
+if [[ ! -f "$CONN_INFO" ]]; then
+  echo "Error: Local is not running (connection info not found)" >&2
+  exit 1
+fi
+
+PORT=$(jq -r '.port' "$CONN_INFO")
+TOKEN=$(jq -r '.authToken' "$CONN_INFO")
+URL="http://127.0.0.1:${PORT}/graphql"
+
+graphql() {
+  curl -sf -X POST "$URL" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $TOKEN" \
+    -d "$1"
+}
+
+list_sites() {
+  graphql '{"query":"{ sites { id name status } }"}' | \
+    jq -r '.data.sites[] | "\(.id)\t\(.name)\t\(.status)"'
+}
+
+start_site() {
+  local id=$1
+  graphql "{\"query\":\"mutation { startSite(id: \\\"$id\\\") { name status } }\"}" | \
+    jq -r '.data.startSite | "\(.name) → \(.status)"'
+}
+
+stop_site() {
+  local id=$1
+  graphql "{\"query\":\"mutation { stopSite(id: \\\"$id\\\") { name status } }\"}" | \
+    jq -r '.data.stopSite | "\(.name) → \(.status)"'
+}
+
+stop_all() {
+  list_sites | awk -F'\t' '$3=="running" {print $1}' | while read -r id; do
+    stop_site "$id"
+  done
+}
+
+# Pick site via fzf
+pick_site() {
+  list_sites | column -t -s $'\t' | \
+    fzf --prompt="site> " --height=40% --reverse | \
+    awk '{print $1}'
+}
+
+case "${1:-}" in
+  start)
+    id=$(pick_site)
+    [[ -z "$id" ]] && exit 0
+    start_site "$id"
+    ;;
+  stop)
+    id=$(pick_site)
+    [[ -z "$id" ]] && exit 0
+    stop_site "$id"
+    ;;
+  stop-all)
+    stop_all
+    ;;
+  list)
+    list_sites | column -t -s $'\t'
+    ;;
+  *)
+    # Интерактивный режим — выбрать сайт, потом действие
+    id=$(pick_site)
+    [[ -z "$id" ]] && exit 0
+
+    action=$(printf 'start\nstop' | fzf --prompt="action> " --height=10% --reverse)
+    case "$action" in
+      start) start_site "$id" ;;
+      stop)  stop_site  "$id" ;;
+    esac
+    ;;
+esac

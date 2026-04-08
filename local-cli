@@ -2,6 +2,7 @@
 set -euo pipefail
 
 CONN_INFO="${XDG_CONFIG_HOME:-$HOME/.config}/Local/graphql-connection-info.json"
+SITES_JSON="${XDG_CONFIG_HOME:-$HOME/.config}/Local/sites.json"
 
 if [[ ! -f "$CONN_INFO" ]]; then
   echo "Error: Local is not running (connection info not found)" >&2
@@ -37,22 +38,20 @@ stop_site() {
 }
 
 stop_all() {
-  list_sites | awk -F'\t' '$3=="running" {print $1}' | while read -r id; do
+  local running
+  running=$(list_sites | awk -F'\t' '$3=="running" {print $1}')
+  if [[ -z "$running" ]]; then
+    echo "No running sites."
+    return
+  fi
+  echo "$running" | while read -r id; do
     stop_site "$id"
   done
 }
 
-SITES_JSON="${XDG_CONFIG_HOME:-$HOME/.config}/Local/sites.json"
-
-# Find Local site by theme path
 find_site_by_path() {
   local theme_path
   theme_path=$(realpath "${1:-$PWD}")
-
-  if [[ ! -f "$SITES_JSON" ]]; then
-    echo "Error: sites.json not found" >&2
-    exit 1
-  fi
 
   jq -r 'to_entries[] | "\(.key)\t\(.value.name)\t\(.value.path)"' "$SITES_JSON" | \
     while IFS=$'\t' read -r id name path; do
@@ -75,7 +74,7 @@ theme_toggle() {
   match=$(find_site_by_path "$dir")
 
   if [[ -z "$match" ]]; then
-    echo "Error: could not find a Local site containing this theme path" >&2
+    echo "Error: could not find a Local site for this theme path" >&2
     exit 1
   fi
 
@@ -97,36 +96,68 @@ theme_toggle() {
       read -r -p "Start site? [y/N] " confirm
       [[ "$confirm" =~ ^[Yy]$ ]] && start_site "$id"
       ;;
-    *)
-      echo "Unknown status: $status" >&2
-      exit 1
+  esac
+}
+
+interactive() {
+  # Show running sites
+  local running
+  running=$(list_sites | awk -F'\t' '$3=="running"')
+
+  if [[ -n "$running" ]]; then
+    echo "Running sites:"
+    echo "$running" | column -t -s $'\t'
+    echo ""
+  else
+    echo "No running sites."
+    echo ""
+  fi
+
+  # Pick action
+  local action
+  action=$(printf 'Start\nStop\nStop All\nTheme toggle\nInstall\nExit' | \
+    fzf --prompt="action> " --height=25% --reverse)
+
+  case "$action" in
+    Start)
+      local result
+      result=$({ echo "← back"; list_sites | column -t -s $'\t'; } | \
+        fzf --prompt="start site> " --height=40% --reverse)
+      [[ -z "$result" || "$result" == "← back" ]] && exit 0
+      start_site "$(echo "$result" | awk '{print $1}')"
+      ;;
+    Stop)
+      if [[ -z "$running" ]]; then
+        echo "No running sites to stop."
+        exit 0
+      fi
+      local result
+      result=$({ echo "← back"; echo "$running" | column -t -s $'\t'; } | \
+        fzf --prompt="stop site> " --height=40% --reverse)
+      [[ -z "$result" || "$result" == "← back" ]] && exit 0
+      stop_site "$(echo "$result" | awk '{print $1}')"
+      ;;
+    "Stop All")
+      stop_all
+      ;;
+    "Theme toggle")
+      theme_toggle
+      ;;
+    Install)
+      local install_dir="$HOME/.local/bin"
+      mkdir -p "$install_dir"
+      ln -sf "$(realpath "$0")" "$install_dir/local-cli"
+      echo "Linked: $install_dir/local-cli → $(realpath "$0")"
+      ;;
+    Exit|"")
+      exit 0
       ;;
   esac
 }
 
-# Pick site via fzf
-pick_site() {
-  local result
-  result=$({ echo "exit"; list_sites | column -t -s $'\t'; } | \
-    fzf --prompt="site> " --height=40% --reverse)
-  [[ -z "$result" || "$result" == "exit" ]] && exit 0
-  echo "$result" | awk '{print $1}'
-}
-
 case "${1:-}" in
-  help|-h|--help)
-    echo "Usage: local-cli <command>"
-    echo ""
-    echo "Commands:"
-    echo "  (none)        interactive mode: pick site and action via fzf"
-    echo "  list          list all sites"
-    echo "  running       list running sites"
-    echo "  start         pick site via fzf and start it"
-    echo "  stop          pick site via fzf and stop it"
-    echo "  stop-all      stop all running sites"
-    echo "  theme [path]  detect site from theme dir and toggle start/stop"
-    echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
-    echo "  help          show this help"
+  theme)
+    theme_toggle "${2:-}"
     ;;
   install)
     INSTALL_DIR="${2:-$HOME/.local/bin}"
@@ -135,38 +166,16 @@ case "${1:-}" in
     echo "Linked: $INSTALL_DIR/local-cli → $(realpath "$0")"
     echo "Make sure $INSTALL_DIR is in your PATH"
     ;;
-  start)
-    id=$(pick_site)
-    [[ -z "$id" ]] && exit 0
-    start_site "$id"
-    ;;
-  stop)
-    id=$(pick_site)
-    [[ -z "$id" ]] && exit 0
-    stop_site "$id"
-    ;;
-  stop-all)
-    stop_all
-    ;;
-  theme)
-    theme_toggle "${2:-}"
-    ;;
-  list)
-    list_sites | column -t -s $'\t'
-    ;;
-  running)
-    list_sites | awk -F'\t' '$3=="running"' | column -t -s $'\t'
+  help|-h|--help)
+    echo "Usage: local-cli [command]"
+    echo ""
+    echo "Commands:"
+    echo "  (none)        interactive mode"
+    echo "  theme [path]  detect site from theme dir and toggle start/stop"
+    echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
+    echo "  help          show this help"
     ;;
   *)
-    # Интерактивный режим — выбрать сайт, потом действие
-    id=$(pick_site)
-    [[ -z "$id" ]] && exit 0
-
-    action=$(printf 'start\nstop\nexit' | fzf --prompt="action> " --height=15% --reverse)
-    case "$action" in
-      start) start_site "$id" ;;
-      stop)  stop_site  "$id" ;;
-      exit)  exit 0 ;;
-    esac
+    interactive
     ;;
 esac

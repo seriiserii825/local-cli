@@ -50,6 +50,13 @@ pick_site() {
 }
 
 case "${1:-}" in
+  install)
+    INSTALL_DIR="${2:-$HOME/.local/bin}"
+    mkdir -p "$INSTALL_DIR"
+    ln -sf "$(realpath "$0")" "$INSTALL_DIR/local-cli"
+    echo "Linked: $INSTALL_DIR/local-cli → $(realpath "$0")"
+    echo "Make sure $INSTALL_DIR is in your PATH"
+    ;;
   start)
     id=$(pick_site)
     [[ -z "$id" ]] && exit 0

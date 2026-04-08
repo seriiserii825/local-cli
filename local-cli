@@ -53,14 +53,10 @@ find_site_by_path() {
   local theme_path
   theme_path=$(realpath "${1:-$PWD}")
 
-  echo "[debug] theme_path: $theme_path" >&2
-  echo "[debug] sites.json: $SITES_JSON" >&2
-
   jq -r 'to_entries[] | "\(.key)\t\(.value.name)\t\(.value.path)"' "$SITES_JSON" | \
     while IFS=$'\t' read -r id name path; do
-      echo "[debug] checking site '$name' → path: '$path'" >&2
-      if [[ "$theme_path" == "$path"* ]]; then
-        echo "[debug] MATCH found: $id $name" >&2
+      local expanded="${path/#\~/$HOME}"
+      if [[ "$theme_path" == "$expanded"* ]]; then
         echo "$id"$'\t'"$name"
         return
       fi

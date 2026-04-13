@@ -132,11 +132,19 @@ interactive() {
         echo "No running sites to stop."
         exit 0
       fi
-      local result
-      result=$({ echo "← back"; echo "$running" | column -t -s $'\t'; } | \
-        fzf --prompt="stop site> " --height=40% --reverse)
-      [[ -z "$result" || "$result" == "← back" ]] && exit 0
-      stop_site "$(echo "$result" | awk '{print $1}')"
+      local i=1
+      local -a site_ids
+      while IFS=$'\t' read -r id name status; do
+        echo "  $i) $name"
+        site_ids[$i]="$id"
+        ((i++))
+      done <<< "$running"
+      echo ""
+      read -r -p "Select sites to stop (e.g. 1 2 3): " selection
+      [[ -z "$selection" ]] && exit 0
+      for idx in $selection; do
+        [[ -n "${site_ids[$idx]:-}" ]] && stop_site "${site_ids[$idx]}"
+      done
       ;;
     "Stop All")
       stop_all

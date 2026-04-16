@@ -121,30 +121,48 @@ interactive() {
 
   case "$action" in
     Start)
-      local result
-      result=$({ echo "← back"; list_sites | column -t -s $'\t'; } | \
-        fzf --prompt="start site> " --height=40% --reverse)
-      [[ -z "$result" || "$result" == "← back" ]] && exit 0
-      start_site "$(echo "$result" | awk '{print $1}')"
+      local match id name status
+      match=$(find_site_by_path "$PWD")
+      if [[ -n "$match" ]]; then
+        id=$(echo "$match" | cut -f1)
+        name=$(echo "$match" | cut -f2)
+        status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+        if [[ "$status" == "running" ]]; then
+          echo "Warning: '$name' is already running."
+        else
+          start_site "$id"
+        fi
+      else
+        local result
+        result=$({ echo "← back"; list_sites | column -t -s $'\t'; } | \
+          fzf --prompt="start site> " --height=40% --reverse)
+        [[ -z "$result" || "$result" == "← back" ]] && exit 0
+        start_site "$(echo "$result" | awk '{print $1}')"
+      fi
       ;;
     Stop)
-      if [[ -z "$running" ]]; then
-        echo "No running sites to stop."
-        exit 0
+      local match id name status
+      match=$(find_site_by_path "$PWD")
+      if [[ -n "$match" ]]; then
+        id=$(echo "$match" | cut -f1)
+        name=$(echo "$match" | cut -f2)
+        status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+        if [[ "$status" != "running" ]]; then
+          echo "Warning: '$name' is not running."
+        else
+          stop_site "$id"
+        fi
+      else
+        if [[ -z "$running" ]]; then
+          echo "No running sites to stop."
+          exit 0
+        fi
+        local result
+        result=$(echo "$running" | column -t -s $'\t' | \
+          fzf --prompt="stop site> " --height=40% --reverse)
+        [[ -z "$result" ]] && exit 0
+        stop_site "$(echo "$result" | awk '{print $1}')"
       fi
-      local i=1
-      local -a site_ids
-      while IFS=$'\t' read -r id name status; do
-        echo "  $i) $name"
-        site_ids[$i]="$id"
-        ((i++))
-      done <<< "$running"
-      echo ""
-      read -r -p "Select sites to stop (e.g. 1 2 3): " selection
-      [[ -z "$selection" ]] && exit 0
-      for idx in $selection; do
-        [[ -n "${site_ids[$idx]:-}" ]] && stop_site "${site_ids[$idx]}"
-      done
       ;;
     "Stop All")
       stop_all

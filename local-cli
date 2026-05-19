@@ -186,22 +186,26 @@ interactive() {
       fi
       ;;
     "Start by Select")
-      local result
-      result=$({ echo "← back"; list_sites | column -t -s $'\t'; } | \
-        fzf --prompt="start site> " --height=40% --reverse)
-      [[ -z "$result" || "$result" == "← back" ]] && exit 0
-      start_site "$(echo "$result" | awk '{print $1}')"
+      local results
+      results=$(list_sites | column -t -s $'\t' | \
+        fzf --prompt="start site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+      [[ -z "$results" ]] && exit 0
+      while IFS= read -r result; do
+        start_site "$(echo "$result" | awk '{print $1}')"
+      done <<< "$results"
       ;;
     "Stop by Select")
       if [[ -z "$running" ]]; then
         echo "No running sites to stop."
         exit 0
       fi
-      local result
-      result=$(echo "$running" | column -t -s $'\t' | \
-        fzf --prompt="stop site> " --height=40% --reverse)
-      [[ -z "$result" ]] && exit 0
-      stop_site "$(echo "$result" | awk '{print $1}')"
+      local results
+      results=$(echo "$running" | column -t -s $'\t' | \
+        fzf --prompt="stop site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+      [[ -z "$results" ]] && exit 0
+      while IFS= read -r result; do
+        stop_site "$(echo "$result" | awk '{print $1}')"
+      done <<< "$results"
       ;;
     "Stop All")
       stop_all

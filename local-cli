@@ -134,95 +134,99 @@ table_print() {
 }
 
 interactive() {
-  # Show running sites
-  local running
-  running=$(list_sites | awk -F'\t' '$3=="running"')
+  while true; do
+    # Show running sites
+    local running
+    running=$(list_sites | awk -F'\t' '$3=="running"')
 
-  if [[ -n "$running" ]]; then
-    echo "Running sites:"
-    { printf 'ID\tName\tStatus\n'; echo "$running"; } | table_print
-    echo ""
-  else
-    echo "No running sites."
-    echo ""
-  fi
+    if [[ -n "$running" ]]; then
+      echo "Running sites:"
+      { printf 'ID\tName\tStatus\n'; echo "$running"; } | table_print
+      echo ""
+    else
+      echo "No running sites."
+      echo ""
+    fi
 
-  # Pick action
-  local action
-  action=$(printf 'Start Current\nStop Current\nStart by Select\nStop by Select\nStop All\nTheme toggle\nInstall\nExit' | \
-    fzf --prompt="action> " --height=30% --reverse)
+    # Pick action
+    local action
+    action=$(printf 'Start Current\nStop Current\nStart by Select\nStop by Select\nStop All\nTheme toggle\nInstall\nExit' | \
+      fzf --prompt="action> " --height=30% --reverse)
 
-  case "$action" in
-    "Start Current")
-      local match id name status
-      match=$(find_site_by_path "$PWD")
-      if [[ -z "$match" ]]; then
-        echo "No Local site found for current directory."
+    case "$action" in
+      "Start Current")
+        local match id name status
+        match=$(find_site_by_path "$PWD")
+        if [[ -z "$match" ]]; then
+          echo "No Local site found for current directory."
+        else
+          id=$(echo "$match" | cut -f1)
+          name=$(echo "$match" | cut -f2)
+          status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+          if [[ "$status" == "running" ]]; then
+            echo "Warning: '$name' is already running."
+          else
+            start_site "$id"
+          fi
+        fi
+        ;;
+      "Stop Current")
+        local match id name status
+        match=$(find_site_by_path "$PWD")
+        if [[ -z "$match" ]]; then
+          echo "No Local site found for current directory."
+        else
+          id=$(echo "$match" | cut -f1)
+          name=$(echo "$match" | cut -f2)
+          status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+          if [[ "$status" != "running" ]]; then
+            echo "Warning: '$name' is not running."
+          else
+            stop_site "$id"
+          fi
+        fi
+        ;;
+      "Start by Select")
+        local results
+        results=$(list_sites | column -t -s $'\t' | \
+          fzf --prompt="start site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+        if [[ -n "$results" ]]; then
+          while IFS= read -r result; do
+            start_site "$(echo "$result" | awk '{print $1}')"
+          done <<< "$results"
+        fi
+        ;;
+      "Stop by Select")
+        if [[ -z "$running" ]]; then
+          echo "No running sites to stop."
+        else
+          local results
+          results=$(echo "$running" | column -t -s $'\t' | \
+            fzf --prompt="stop site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+          if [[ -n "$results" ]]; then
+            while IFS= read -r result; do
+              stop_site "$(echo "$result" | awk '{print $1}')"
+            done <<< "$results"
+          fi
+        fi
+        ;;
+      "Stop All")
+        stop_all
+        ;;
+      "Theme toggle")
+        theme_toggle
+        ;;
+      Install)
+        local install_dir="$HOME/.local/bin"
+        mkdir -p "$install_dir"
+        ln -sf "$(realpath "$0")" "$install_dir/local-cli"
+        echo "Linked: $install_dir/local-cli → $(realpath "$0")"
+        ;;
+      Exit|"")
         exit 0
-      fi
-      id=$(echo "$match" | cut -f1)
-      name=$(echo "$match" | cut -f2)
-      status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
-      if [[ "$status" == "running" ]]; then
-        echo "Warning: '$name' is already running."
-      else
-        start_site "$id"
-      fi
-      ;;
-    "Stop Current")
-      local match id name status
-      match=$(find_site_by_path "$PWD")
-      if [[ -z "$match" ]]; then
-        echo "No Local site found for current directory."
-        exit 0
-      fi
-      id=$(echo "$match" | cut -f1)
-      name=$(echo "$match" | cut -f2)
-      status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
-      if [[ "$status" != "running" ]]; then
-        echo "Warning: '$name' is not running."
-      else
-        stop_site "$id"
-      fi
-      ;;
-    "Start by Select")
-      local results
-      results=$(list_sites | column -t -s $'\t' | \
-        fzf --prompt="start site> " --height=40% --reverse --multi --bind "tab:toggle+down")
-      [[ -z "$results" ]] && exit 0
-      while IFS= read -r result; do
-        start_site "$(echo "$result" | awk '{print $1}')"
-      done <<< "$results"
-      ;;
-    "Stop by Select")
-      if [[ -z "$running" ]]; then
-        echo "No running sites to stop."
-        exit 0
-      fi
-      local results
-      results=$(echo "$running" | column -t -s $'\t' | \
-        fzf --prompt="stop site> " --height=40% --reverse --multi --bind "tab:toggle+down")
-      [[ -z "$results" ]] && exit 0
-      while IFS= read -r result; do
-        stop_site "$(echo "$result" | awk '{print $1}')"
-      done <<< "$results"
-      ;;
-    "Stop All")
-      stop_all
-      ;;
-    "Theme toggle")
-      theme_toggle
-      ;;
-    Install)
-      local install_dir="$HOME/.local/bin"
-      mkdir -p "$install_dir"
-      ln -sf "$(realpath "$0")" "$install_dir/local-cli"
-      echo "Linked: $install_dir/local-cli → $(realpath "$0")"
-      ;;
-    Exit|"")
-      exit 0
-      ;;
-  esac
+        ;;
+    esac
+  done
 }
 
 case "${1:-}" in

@@ -233,6 +233,12 @@ case "${1:-}" in
   theme)
     theme_toggle "${2:-}"
     ;;
+  list)
+    list_sites
+    ;;
+  stop-all)
+    stop_all
+    ;;
   install)
     INSTALL_DIR="${2:-$HOME/.local/bin}"
     mkdir -p "$INSTALL_DIR"
@@ -246,6 +252,8 @@ case "${1:-}" in
     echo "Commands:"
     echo "  (none)        interactive mode"
     echo "  theme [path]  detect site from theme dir and toggle start/stop"
+    echo "  list          list all sites (id, name, status)"
+    echo "  stop-all      stop all running sites"
     echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
     echo "  help          show this help"
     ;;

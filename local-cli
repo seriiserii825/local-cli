@@ -100,6 +100,67 @@ theme_toggle() {
   esac
 }
 
+start_current() {
+  local match id name status
+  match=$(find_site_by_path "$PWD")
+  if [[ -z "$match" ]]; then
+    echo "No Local site found for current directory."
+  else
+    id=$(echo "$match" | cut -f1)
+    name=$(echo "$match" | cut -f2)
+    status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+    if [[ "$status" == "running" ]]; then
+      echo "Warning: '$name' is already running."
+    else
+      start_site "$id"
+    fi
+  fi
+}
+
+stop_current() {
+  local match id name status
+  match=$(find_site_by_path "$PWD")
+  if [[ -z "$match" ]]; then
+    echo "No Local site found for current directory."
+  else
+    id=$(echo "$match" | cut -f1)
+    name=$(echo "$match" | cut -f2)
+    status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
+    if [[ "$status" != "running" ]]; then
+      echo "Warning: '$name' is not running."
+    else
+      stop_site "$id"
+    fi
+  fi
+}
+
+start_select() {
+  local results
+  results=$(list_sites | column -t -s $'\t' | \
+    fzf --prompt="start site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+  if [[ -n "$results" ]]; then
+    while IFS= read -r result; do
+      start_site "$(echo "$result" | awk '{print $1}')"
+    done <<< "$results"
+  fi
+}
+
+stop_select() {
+  local running results
+  running=$(list_sites | awk -F'\t' '$3=="running"')
+  if [[ -z "$running" ]]; then
+    echo "No running sites to stop."
+  else
+    results=$(echo "$running" | column -t -s $'\t' | \
+      fzf --prompt="stop site> " --height=40% --reverse --multi --bind "tab:toggle+down")
+    if [[ -n "$results" ]]; then
+      while IFS= read -r result; do
+        stop_site "$(echo "$result" | awk '{print $1}')"
+      done <<< "$results"
+    fi
+  fi
+}
+
 table_print() {
   awk -F'\t' '
     BEGIN { n=0 }
@@ -155,60 +216,16 @@ interactive() {
 
     case "$action" in
       "Start Current")
-        local match id name status
-        match=$(find_site_by_path "$PWD")
-        if [[ -z "$match" ]]; then
-          echo "No Local site found for current directory."
-        else
-          id=$(echo "$match" | cut -f1)
-          name=$(echo "$match" | cut -f2)
-          status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
-          if [[ "$status" == "running" ]]; then
-            echo "Warning: '$name' is already running."
-          else
-            start_site "$id"
-          fi
-        fi
+        start_current
         ;;
       "Stop Current")
-        local match id name status
-        match=$(find_site_by_path "$PWD")
-        if [[ -z "$match" ]]; then
-          echo "No Local site found for current directory."
-        else
-          id=$(echo "$match" | cut -f1)
-          name=$(echo "$match" | cut -f2)
-          status=$(list_sites | awk -F'\t' -v id="$id" '$1==id {print $3}')
-          if [[ "$status" != "running" ]]; then
-            echo "Warning: '$name' is not running."
-          else
-            stop_site "$id"
-          fi
-        fi
+        stop_current
         ;;
       "Start by Select")
-        local results
-        results=$(list_sites | column -t -s $'\t' | \
-          fzf --prompt="start site> " --height=40% --reverse --multi --bind "tab:toggle+down")
-        if [[ -n "$results" ]]; then
-          while IFS= read -r result; do
-            start_site "$(echo "$result" | awk '{print $1}')"
-          done <<< "$results"
-        fi
+        start_select
         ;;
       "Stop by Select")
-        if [[ -z "$running" ]]; then
-          echo "No running sites to stop."
-        else
-          local results
-          results=$(echo "$running" | column -t -s $'\t' | \
-            fzf --prompt="stop site> " --height=40% --reverse --multi --bind "tab:toggle+down")
-          if [[ -n "$results" ]]; then
-            while IFS= read -r result; do
-              stop_site "$(echo "$result" | awk '{print $1}')"
-            done <<< "$results"
-          fi
-        fi
+        stop_select
         ;;
       "Stop All")
         stop_all
@@ -236,6 +253,18 @@ case "${1:-}" in
   list)
     list_sites
     ;;
+  start-current)
+    start_current
+    ;;
+  stop-current)
+    stop_current
+    ;;
+  start-select)
+    start_select
+    ;;
+  stop-select)
+    stop_select
+    ;;
   stop-all)
     stop_all
     ;;
@@ -253,6 +282,10 @@ case "${1:-}" in
     echo "  (none)        interactive mode"
     echo "  theme [path]  detect site from theme dir and toggle start/stop"
     echo "  list          list all sites (id, name, status)"
+    echo "  start-current start the site for the current directory"
+    echo "  stop-current  stop the site for the current directory"
+    echo "  start-select  pick site(s) to start via fzf"
+    echo "  stop-select   pick running site(s) to stop via fzf"
     echo "  stop-all      stop all running sites"
     echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
     echo "  help          show this help"

@@ -145,6 +145,51 @@ start_select() {
   fi
 }
 
+search_site() {
+  local query="${1:-}" all selected id name status path
+
+  all=$(jq -r 'to_entries[] | "\(.key)\t\(.value.name)\t\(.value.path)"' "$SITES_JSON")
+  if [[ -z "$all" ]]; then
+    echo "No sites found."
+    return
+  fi
+
+  selected=$(
+    list_sites | awk -F'\t' '{print $1"\t"$2"\t"$3}' | \
+    while IFS=$'\t' read -r sid sname sstatus; do
+      spath=$(echo "$all" | awk -F'\t' -v id="$sid" '$1==id {print $3}')
+      printf '%s\t%s\t%s\t%s\n' "$sid" "$sname" "$sstatus" "${spath/#\~/$HOME}"
+    done | \
+    fzf --prompt="search> " --height=50% --reverse \
+        --query "$query" \
+        --delimiter=$'\t' \
+        --with-nth=2,3 \
+        --preview='echo "ID:     {1}"; echo "Name:   {2}"; echo "Status: {3}"; echo "Path:   {4}"' \
+        --preview-window=down:4:wrap
+  )
+
+  if [[ -n "$selected" ]]; then
+    id=$(printf '%s' "$selected" | cut -f1)
+    name=$(printf '%s' "$selected" | cut -f2)
+    status=$(printf '%s' "$selected" | cut -f3)
+    path=$(printf '%s' "$selected" | cut -f4)
+    echo "Site:   $name"
+    echo "Status: $status"
+    echo "Path:   $path"
+    echo ""
+    case "$status" in
+      running)
+        read -r -p "Stop site? [y/N] " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] && stop_site "$id"
+        ;;
+      halted)
+        read -r -p "Start site? [y/N] " confirm
+        [[ "$confirm" =~ ^[Yy]$ ]] && start_site "$id"
+        ;;
+    esac
+  fi
+}
+
 stop_select() {
   local running results
   running=$(list_sites | awk -F'\t' '$3=="running"')
@@ -211,10 +256,13 @@ interactive() {
 
     # Pick action
     local action
-    action=$(printf 'Start Current\nStop Current\nStart by Select\nStop by Select\nStop All\nTheme toggle\nInstall\nExit' | \
+    action=$(printf 'Search\nStart Current\nStop Current\nStart by Select\nStop by Select\nStop All\nTheme toggle\nInstall\nExit' | \
       fzf --prompt="action> " --height=30% --reverse)
 
     case "$action" in
+      "Search")
+        search_site
+        ;;
       "Start Current")
         start_current
         ;;
@@ -247,6 +295,20 @@ interactive() {
 }
 
 case "${1:-}" in
+  search)
+    search_site "${2:-}"
+    ;;
+  args)
+    cat <<'EOF'
+alias lcl="local-cli list"
+alias lcsc="local-cli start-current"
+alias lcfc="local-cli stop-current"
+alias lcss="local-cli start-select"
+alias lcfs="local-cli stop-select"
+alias lcsa="local-cli stop-all"
+alias lcse="local-cli search"
+EOF
+    ;;
   theme)
     theme_toggle "${2:-}"
     ;;
@@ -280,6 +342,8 @@ case "${1:-}" in
     echo ""
     echo "Commands:"
     echo "  (none)        interactive mode"
+    echo "  search [query] fuzzy-search all sites; select to start/stop"
+    echo "  args           print shell aliases (eval \"\$(local-cli args)\")"
     echo "  theme [path]  detect site from theme dir and toggle start/stop"
     echo "  list          list all sites (id, name, status)"
     echo "  start-current start the site for the current directory"

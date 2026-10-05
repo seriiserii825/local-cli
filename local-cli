@@ -206,6 +206,41 @@ stop_select() {
   fi
 }
 
+copy_socket() {
+  local dir="${1:-$PWD}"
+  local run_dir="${XDG_CONFIG_HOME:-$HOME/.config}/Local/run"
+  local match id name sock
+
+  match=$(find_site_by_path "$dir")
+
+  if [[ -z "$match" ]]; then
+    echo "Error: could not find a Local site for this path: $dir" >&2
+    exit 1
+  fi
+
+  id=$(echo "$match" | cut -f1)
+  name=$(echo "$match" | cut -f2)
+  sock="$run_dir/$id/mysql/mysqld.sock"
+
+  if [[ ! -S "$sock" ]]; then
+    echo "Warning: socket not found (is '$name' running?): $sock" >&2
+  fi
+
+  if command -v wl-copy >/dev/null 2>&1 && [[ -n "${WAYLAND_DISPLAY:-}" ]]; then
+    printf '%s' "$sock" | wl-copy
+  elif command -v xclip >/dev/null 2>&1; then
+    printf '%s' "$sock" | xclip -selection clipboard
+  elif command -v xsel >/dev/null 2>&1; then
+    printf '%s' "$sock" | xsel --clipboard --input
+  else
+    echo "Error: no clipboard tool found (install xclip, xsel, or wl-copy)" >&2
+    exit 1
+  fi
+
+  echo "Site:   $name"
+  echo "Copied: $sock"
+}
+
 table_print() {
   awk -F'\t' '
     BEGIN { n=0 }
@@ -256,12 +291,15 @@ interactive() {
 
     # Pick action
     local action
-    action=$(printf 'Search\nStart Current\nStop Current\nStart by Select\nStop by Select\nStop All\nTheme toggle\nInstall\nExit' | \
+    action=$(printf 'Search\nStart Current\nStop Current\nStart by Select\nStop by Select\nStop All\nCopy Socket\nTheme toggle\nInstall\nExit' | \
       fzf --prompt="action> " --height=30% --reverse)
 
     case "$action" in
       "Search")
         search_site
+        ;;
+      "Copy Socket")
+        copy_socket
         ;;
       "Start Current")
         start_current
@@ -307,6 +345,7 @@ alias lcss="local-cli start-select"
 alias lcfs="local-cli stop-select"
 alias lcsa="local-cli stop-all"
 alias lcse="local-cli search"
+alias lccs="local-cli copy-socket"
 EOF
     ;;
   theme)
@@ -330,6 +369,9 @@ EOF
   stop-all)
     stop_all
     ;;
+  copy-socket)
+    copy_socket "${2:-}"
+    ;;
   install)
     INSTALL_DIR="${2:-$HOME/.local/bin}"
     mkdir -p "$INSTALL_DIR"
@@ -351,6 +393,7 @@ EOF
     echo "  start-select  pick site(s) to start via fzf"
     echo "  stop-select   pick running site(s) to stop via fzf"
     echo "  stop-all      stop all running sites"
+    echo "  copy-socket [path]  detect site from path (default: cwd) and copy its mysql socket path to clipboard"
     echo "  install       symlink local-cli to ~/.local/bin (or custom dir)"
     echo "  help          show this help"
     ;;
